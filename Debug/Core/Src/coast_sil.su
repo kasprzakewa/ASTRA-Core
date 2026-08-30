@@ -1,0 +1,4 @@
+../Core/Inc/physics.h:17:21:clamp_f	24	static
+../Core/Src/coast_sil.c:9:14:fabsf_local	16	static
+../Core/Src/coast_sil.c:14:6:coast_sil_init	24	static
+../Core/Src/coast_sil.c:30:9:coast_sil_step	96	static

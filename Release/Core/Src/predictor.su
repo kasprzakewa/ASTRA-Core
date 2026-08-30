@@ -1,0 +1,2 @@
+../Core/Src/predictor.c:9:6:predictor_init	8	static
+../Core/Src/predictor.c:17:18:predict_apogee_3d	40	static

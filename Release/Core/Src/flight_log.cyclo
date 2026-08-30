@@ -1,0 +1,12 @@
+../Core/Src/flight_log.c:135:12:erase_log_region	1
+../Core/Src/flight_log.c:25:13:dbg_led_boot_fail	1
+../Core/Src/flight_log.c:53:13:invalidate_flash_cache	4
+../Core/Src/flight_log.c:155:12:flash_word_is_erased	3
+../Core/Src/flight_log.c:102:12:program_flash_word	3
+../Core/Src/flight_log.c:176:12:write_file_header	2
+../Core/Src/flight_log.c:211:5:flight_log_boot	8
+../Core/Src/flight_log.c:247:5:flight_log_begin_staging	1
+../Core/Src/flight_log.c:253:5:flight_log_append	6
+../Core/Src/flight_log.c:293:5:flight_log_flush	7
+../Core/Src/flight_log.c:325:9:flight_log_is_full	1
+../Core/Src/flight_log.c:330:10:flight_log_record_count	1

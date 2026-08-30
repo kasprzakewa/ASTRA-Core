@@ -1,0 +1,4 @@
+../Core/Src/control.c:7:6:control_init	1
+../Core/Src/control.c:14:6:control_arm	1
+../Core/Src/control.c:19:6:control_disarm	1
+../Core/Src/control.c:25:18:control_step	5

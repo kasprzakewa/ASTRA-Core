@@ -1,0 +1,4 @@
+../Core/Src/telem_playback.c:11:6:telem_playback_reset	1
+../Core/Src/telem_playback.c:16:9:telem_playback_next	4
+../Core/Src/telem_playback.c:26:10:telem_playback_burnout_index	6
+../Core/Src/telem_playback.c:55:10:telem_playback_index	1

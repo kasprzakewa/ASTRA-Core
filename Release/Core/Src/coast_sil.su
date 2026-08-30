@@ -1,0 +1,2 @@
+../Core/Src/coast_sil.c:14:6:coast_sil_init	0	static
+../Core/Src/coast_sil.c:30:9:coast_sil_step	80	static
