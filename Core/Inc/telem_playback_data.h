@@ -1,6 +1,6 @@
 /**
  * @file telem_playback_data.h
- * @brief Generated telemetry table (5013 frames from data/converted/or_3d.csv).
+ * @brief Generated telemetry table (6457 frames from data/converted/astra_3d.csv).
  */
 #ifndef TELEM_PLAYBACK_DATA_H
 #define TELEM_PLAYBACK_DATA_H
@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-#define TELEM_PLAYBACK_FRAME_COUNT  (5013u)
+#define TELEM_PLAYBACK_FRAME_COUNT  (6457u)
 
 extern const stub_telemetry_frame_t telem_playback_frames[TELEM_PLAYBACK_FRAME_COUNT];
 

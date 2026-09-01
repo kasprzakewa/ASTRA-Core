@@ -15,19 +15,21 @@ void model_params_default(model_params_t *p)
     p->baro_exponent            = 0.1903f;
     p->density_exponent         = 4.256f;
     p->g                        = 9.80665f;
-    p->default_cross_section    = 0.01f;
-    p->default_mass             = 15.0f;
-    p->default_drag_coefficient = 0.45f;
-    p->brake_drag_coefficient   = 1.2f;
+    p->default_cross_section    = BODY_CROSS_SECTION_M2;
+    p->default_mass             = DEFAULT_BODY_MASS_KG;
+    p->default_drag_coefficient = DEFAULT_BODY_DRAG_COEFFICIENT;
+    p->brake_drag_coefficient   = DEFAULT_BRAKE_DRAG_COEFFICIENT;
     p->temperature_gradient     = -0.0065f;
 }
 
 float control_to_servo_angle(float u)
 {
     if (isnan(u)) {
-        return 0.0f;
+        return servo_angle_safe_deg();
     }
-    return clamp_f(u, 0.0f, 1.0f) * FULL_SERVO_ANGLE_DEG;
+    float u_clamped = clamp_f(u, 0.0f, 1.0f);
+    return SERVO_ANGLE_SAFE_DEG
+        + u_clamped * (SERVO_ANGLE_OPEN_DEG - SERVO_ANGLE_SAFE_DEG);
 }
 
 float calculate_air_density(float altitude, const model_params_t *p)
@@ -72,11 +74,11 @@ float calculate_drag_coefficient(float speed, float altitude, const model_params
 
 float calculate_brake_area(float servo_angle_deg)
 {
-    /* Brake area polynomial [mm^2]*/
+    /* Brake area polynomial [mm^2], theta in degrees — same coeffs as Python. */
     float brake_mm2 =
-        -86.89128f * servo_angle_deg * servo_angle_deg
-        + 2284.145f * servo_angle_deg
-        + 133.0275f;
+        0.1512f * servo_angle_deg * servo_angle_deg
+        - 124.74f * servo_angle_deg
+        + 9996.8f;
     if (brake_mm2 < 0.0f) {
         brake_mm2 = 0.0f;
     }

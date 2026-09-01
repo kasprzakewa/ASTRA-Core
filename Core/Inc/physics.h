@@ -11,7 +11,19 @@
 extern "C" {
 #endif
 
-#define FULL_SERVO_ANGLE_DEG  (9.16607764f)
+#define SERVO_ANGLE_SAFE_DEG  (90.0f)
+#define SERVO_ANGLE_OPEN_DEG  (30.0f)
+
+#define BODY_DIAMETER_M              0.126f
+#define BODY_CROSS_SECTION_M2        0.012468828f  /* pi * (BODY_DIAMETER_M / 2)^2 */
+#define DEFAULT_BODY_MASS_KG         12.57f
+#define DEFAULT_BODY_DRAG_COEFFICIENT 0.42f
+#define DEFAULT_BRAKE_DRAG_COEFFICIENT 1.2f
+
+static inline float servo_angle_safe_deg(void)
+{
+    return SERVO_ANGLE_SAFE_DEG;
+}
 
 static inline float clamp_f(float x, float lo, float hi)
 {
@@ -39,8 +51,8 @@ typedef struct {
     float g;                        /* m/s^2 */
     float default_cross_section;    /* m^2 */
     float default_mass;             /* kg */
-    float default_drag_coefficient; /* Cd0 rocket */
-    float brake_drag_coefficient;   /* Cd brakes */
+    float default_drag_coefficient; /* Cd0 body */
+    float brake_drag_coefficient;   /* Cd brakes (flat plate) */
     float temperature_gradient;     /* K/m */
 } model_params_t;
 

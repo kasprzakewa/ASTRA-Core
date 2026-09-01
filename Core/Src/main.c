@@ -40,9 +40,13 @@
 #ifndef TELEM_PLAYBACK_CLOSED_LOOP
 #define TELEM_PLAYBACK_CLOSED_LOOP  1
 #endif
-/* 6 discrete output levels in Servo_SetAngleDeg (0 = off) */
+/* 6 discrete output levels in Servo_SetAngleDeg (0 = off); bench softening only */
 #ifndef SERVO_DISCRETE_LEVELS
 #define SERVO_DISCRETE_LEVELS  6U
+#endif
+/* 1 = boot sweep 90 -> 78 -> ... -> 30 -> 90 deg before main loop */
+#ifndef SERVO_BOOT_SWEEP
+#define SERVO_BOOT_SWEEP  1
 #endif
 /* USER CODE END Includes */
 
@@ -98,9 +102,12 @@ static void MPU_Config(void);
 extern TIM_HandleTypeDef htim2;
 _Static_assert(sizeof(stub_telemetry_frame_t) == 21u, "Telemetry frame must be 21 bytes");
 
-#ifndef SERVO_SHAFT_TRAVEL_DEG
-#define SERVO_SHAFT_TRAVEL_DEG  (90.0f)
-#endif
+/*
+ * Servo mapping (sync with core/physics_utils.py):
+ *   u=0 -> 90 deg (brakes closed, safe)
+ *   u=1 -> 30 deg (max brake)
+ * PWM: SERVO_PWM_MIN @ 30 deg, SERVO_PWM_MAX @ 90 deg.
+ */
 #ifndef SERVO_PWM_MIN
 #define SERVO_PWM_MIN  (1000u)
 #endif
@@ -111,39 +118,40 @@ _Static_assert(sizeof(stub_telemetry_frame_t) == 21u, "Telemetry frame must be 2
 #define SERVO_TIM_CHANNEL  TIM_CHANNEL_3
 #endif
 
-/** Round to nearest of SERVO_DISCRETE_LEVELS steps on [0, FULL_SERVO_ANGLE_DEG]. */
+/** Round to nearest of SERVO_DISCRETE_LEVELS steps on [OPEN, SAFE]. */
 static float Servo_DiscretizeAngleDeg(float angle_deg)
 {
 #if SERVO_DISCRETE_LEVELS <= 1U
-    return 0.0f;
+    return angle_deg;
 #else
-    const float step = FULL_SERVO_ANGLE_DEG / (float)(SERVO_DISCRETE_LEVELS - 1U);
-    uint32_t idx = (uint32_t)(angle_deg / step + 0.5f);
+    const float span = SERVO_ANGLE_SAFE_DEG - SERVO_ANGLE_OPEN_DEG;
+    const float step = span / (float)(SERVO_DISCRETE_LEVELS - 1U);
+    uint32_t idx = (uint32_t)((angle_deg - SERVO_ANGLE_OPEN_DEG) / step + 0.5f);
 
     if (idx >= SERVO_DISCRETE_LEVELS) {
         idx = SERVO_DISCRETE_LEVELS - 1U;
     }
-    return (float)idx * step;
+    return SERVO_ANGLE_OPEN_DEG + (float)idx * step;
 #endif
 }
 
 static float Servo_SetAngleDeg(float angle_deg)
 {
     if (angle_deg != angle_deg) { /* NaN */
-        angle_deg = 0.0f;
+        angle_deg = SERVO_ANGLE_SAFE_DEG;
     }
-    angle_deg = clamp_f(angle_deg, 0.0f, FULL_SERVO_ANGLE_DEG);
+    angle_deg = clamp_f(angle_deg, SERVO_ANGLE_OPEN_DEG, SERVO_ANGLE_SAFE_DEG);
 #if SERVO_DISCRETE_LEVELS > 1U
     angle_deg = Servo_DiscretizeAngleDeg(angle_deg);
 #endif
 
-    float frac = angle_deg / SERVO_SHAFT_TRAVEL_DEG;
+    const float span = SERVO_ANGLE_SAFE_DEG - SERVO_ANGLE_OPEN_DEG;
+    const float frac = (angle_deg - SERVO_ANGLE_OPEN_DEG) / span;
     uint32_t pulse = (uint32_t)clamp_f(
         (float)SERVO_PWM_MIN + frac * (float)(SERVO_PWM_MAX - SERVO_PWM_MIN),
         (float)SERVO_PWM_MIN,
         (float)SERVO_PWM_MAX);
     __HAL_TIM_SET_COMPARE(&htim2, SERVO_TIM_CHANNEL, pulse);
-
     return angle_deg;
 }
 
@@ -227,7 +235,8 @@ static void Telemetry_PlaybackFeed(void)
             return;
         }
         PlantState_ToTelem(&st, &g_telem_work);
-        cmd.servo_angle_deg = Servo_SetAngleDeg(cmd.active ? cmd.servo_angle_deg : 0.0f);
+        cmd.servo_angle_deg = Servo_SetAngleDeg(
+            cmd.active ? cmd.servo_angle_deg : SERVO_ANGLE_SAFE_DEG);
         (void)flight_log_append(&g_telem_work, &st, &cmd);
         if (flight_log_is_full()) {
             BSP_LED_On(LED_RED);
@@ -286,12 +295,12 @@ int main(void)
   HAL_TIM_PWM_Start(&htim2, SERVO_TIM_CHANNEL);
 
   control_init(&g_control);
-  g_control.predictor.params.default_mass = 15.0f;
-  g_control.predictor.params.default_drag_coefficient = 0.45f;
-  g_control.predictor.params.default_cross_section = 0.01f;
-  g_control.pd.params.target_apogee = 2500.0f;
-  g_control.pd.params.kp = 0.02f;
-  g_control.pd.params.kd = 0.0001f;
+  /* Model params: model_params_default() in physics.c (mass 12.57 kg, Cd 0.42,
+   * BODY_CROSS_SECTION_M2). Override here only for experiments. */
+  g_control.pd.params.target_apogee = 2200.0f;
+  g_control.pd.params.kp = 0.08f;
+  g_control.pd.params.kd = 0.0005f;
+  g_control.pd.params.error_deadband = 10.0f;
   g_control.predictor.solver = SOLVER_EULER;
   g_control.predictor.dt = 0.01f;
 
@@ -325,21 +334,34 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  /* Boot servo check */
-//  Servo_SetAngleDeg(0.0f);
-//  BSP_LED_Toggle(LED_YELLOW);
-//  HAL_Delay(1000);
-//  Servo_SetAngleDeg(FULL_SERVO_ANGLE_DEG);
-//  BSP_LED_Toggle(LED_YELLOW);
-//  HAL_Delay(1000);
-//  Servo_SetAngleDeg(0.0f);
-//  BSP_LED_Toggle(LED_YELLOW);
-//  HAL_Delay(1000);
-//  BSP_LED_On(LED_YELLOW);
+#if SERVO_BOOT_SWEEP
+  Servo_SetAngleDeg(SERVO_ANGLE_SAFE_DEG);
+  BSP_LED_Toggle(LED_YELLOW);
+  HAL_Delay(1000);
+  Servo_SetAngleDeg(78.0f);
+  BSP_LED_Toggle(LED_YELLOW);
+  HAL_Delay(1000);
+  Servo_SetAngleDeg(66.0f);
+  BSP_LED_Toggle(LED_YELLOW);
+  HAL_Delay(1000);
+  Servo_SetAngleDeg(54.0f);
+  BSP_LED_Toggle(LED_YELLOW);
+  HAL_Delay(1000);
+  Servo_SetAngleDeg(42.0f);
+  BSP_LED_Toggle(LED_YELLOW);
+  HAL_Delay(1000);
+  Servo_SetAngleDeg(SERVO_ANGLE_OPEN_DEG);
+  BSP_LED_Toggle(LED_YELLOW);
+  HAL_Delay(1000);
+  Servo_SetAngleDeg(SERVO_ANGLE_SAFE_DEG);
+#else
+  Servo_SetAngleDeg(SERVO_ANGLE_SAFE_DEG);
+#endif
+
+  BSP_LED_On(LED_YELLOW);
 
   while (1)
   {
-
 #if TELEM_SOURCE_PLAYBACK
     Telemetry_PlaybackFeed();
 #endif
@@ -354,7 +376,8 @@ int main(void)
 
         flight_state_t st;
         control_output_t cmd = telemetry_run_control(&g_control, &g_telem_work, &st);
-        cmd.servo_angle_deg = Servo_SetAngleDeg(cmd.active ? cmd.servo_angle_deg : 0.0f);
+        cmd.servo_angle_deg = Servo_SetAngleDeg(
+            cmd.active ? cmd.servo_angle_deg : SERVO_ANGLE_SAFE_DEG);
 
         (void)flight_log_append(&g_telem_work, &st, &cmd);
         if (flight_log_is_full()) {

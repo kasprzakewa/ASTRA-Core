@@ -29,11 +29,10 @@ control_output_t control_step(
     control_output_t out = {0};
 
     if (!ctl->armed ||
-		state->velocity_z <= 0.0f ||
-		state->velocity_z > MAX_BRAKE_DEPLOY_SPEED_MS)
-    {
+        state->velocity_z <= 0.0f ||
+        state->velocity_z > MAX_BRAKE_DEPLOY_SPEED_MS) {
         out.control_u = 0.0f;
-        out.servo_angle_deg = 0.0f;
+        out.servo_angle_deg = servo_angle_safe_deg();
         out.active = 0;
         if (state->velocity_z > 0.0f) {
             predict_result_t pred = predict_apogee_3d(
