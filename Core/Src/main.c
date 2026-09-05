@@ -48,6 +48,10 @@
 #ifndef SERVO_BOOT_SWEEP
 #define SERVO_BOOT_SWEEP  0
 #endif
+/* Seconds for full SAFE→OPEN (0→60°); 0 = instant. Closing is always instant. */
+#ifndef SERVO_OPEN_TIME_S
+#define SERVO_OPEN_TIME_S  (0.4f)
+#endif
 /* Flash log window by fc_state (UART + playback). */
 #ifndef FLIGHT_LOG_UART_STATE_START
 #define FLIGHT_LOG_UART_STATE_START  ((uint8_t)TELEM_STATE_FREE_FLIGHT)  /* 2 */
@@ -167,23 +171,56 @@ static float Servo_DiscretizeAngleDeg(float angle_deg)
 
 static float Servo_SetAngleDeg(float angle_deg)
 {
+    static float s_angle = SERVO_ANGLE_SAFE_DEG;
+    static uint32_t s_tick_ms;
+    static uint8_t s_have_tick;
+
     if (angle_deg != angle_deg) { /* NaN */
         angle_deg = SERVO_ANGLE_SAFE_DEG;
     }
     /* SAFE=0 … OPEN=60 */
     angle_deg = clamp_f(angle_deg, SERVO_ANGLE_SAFE_DEG, SERVO_ANGLE_OPEN_DEG);
-#if SERVO_DISCRETE_LEVELS > 1U
-    angle_deg = Servo_DiscretizeAngleDeg(angle_deg);
-#endif
 
-    /* 0° → PWM_MAX, 60° → PWM_MIN */
-    const float span = SERVO_ANGLE_OPEN_DEG - SERVO_ANGLE_SAFE_DEG;
-    const float open_frac = (angle_deg - SERVO_ANGLE_SAFE_DEG) / span;
-    uint32_t pulse = (uint32_t)(
-        (float)SERVO_PWM_MAX
-        - open_frac * (float)(SERVO_PWM_MAX - SERVO_PWM_MIN));
-    __HAL_TIM_SET_COMPARE(&htim2, SERVO_TIM_CHANNEL, pulse);
-    return angle_deg;
+    {
+        const uint32_t now = HAL_GetTick();
+        if (!s_have_tick) {
+            s_angle = angle_deg;
+            s_tick_ms = now;
+            s_have_tick = 1U;
+        } else {
+            const float dt = (float)(now - s_tick_ms) * 0.001f;
+            s_tick_ms = now;
+            if (angle_deg < s_angle) {
+                /* Close immediately (safe retract). */
+                s_angle = angle_deg;
+            } else if (angle_deg > s_angle) {
+                if (SERVO_OPEN_TIME_S <= 0.0f || dt <= 0.0f) {
+                    s_angle = angle_deg;
+                } else {
+                    const float span = SERVO_ANGLE_OPEN_DEG - SERVO_ANGLE_SAFE_DEG;
+                    const float max_step = (span / SERVO_OPEN_TIME_S) * dt;
+                    const float need = angle_deg - s_angle;
+                    s_angle += (need < max_step) ? need : max_step;
+                }
+            }
+        }
+        angle_deg = s_angle;
+    }
+
+    {
+        float pwm_angle = angle_deg;
+#if SERVO_DISCRETE_LEVELS > 1U
+        pwm_angle = Servo_DiscretizeAngleDeg(pwm_angle);
+#endif
+        /* 0° → PWM_MAX, 60° → PWM_MIN */
+        const float span = SERVO_ANGLE_OPEN_DEG - SERVO_ANGLE_SAFE_DEG;
+        const float open_frac = (pwm_angle - SERVO_ANGLE_SAFE_DEG) / span;
+        uint32_t pulse = (uint32_t)(
+            (float)SERVO_PWM_MAX
+            - open_frac * (float)(SERVO_PWM_MAX - SERVO_PWM_MIN));
+        __HAL_TIM_SET_COMPARE(&htim2, SERVO_TIM_CHANNEL, pulse);
+        return pwm_angle;
+    }
 }
 
 #if !TELEM_SOURCE_PLAYBACK
@@ -265,6 +302,10 @@ static void Telemetry_PlaybackFeed(void)
         PlantState_ToTelem(&st, &g_telem_work);
         cmd.servo_angle_deg = Servo_SetAngleDeg(
             cmd.active ? cmd.servo_angle_deg : SERVO_ANGLE_SAFE_DEG);
+        {
+            const float span = SERVO_ANGLE_OPEN_DEG - SERVO_ANGLE_SAFE_DEG;
+            g_coast_sil.u = (cmd.servo_angle_deg - SERVO_ANGLE_SAFE_DEG) / span;
+        }
         FlightLog_MaybeAppend(&g_telem_work, &st, &cmd);
         return;
     }
