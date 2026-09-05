@@ -48,6 +48,13 @@
 #ifndef SERVO_BOOT_SWEEP
 #define SERVO_BOOT_SWEEP  0
 #endif
+/* Flash log window by fc_state (UART + playback). */
+#ifndef FLIGHT_LOG_UART_STATE_START
+#define FLIGHT_LOG_UART_STATE_START  ((uint8_t)TELEM_STATE_FREE_FLIGHT)  /* 2 */
+#endif
+#ifndef FLIGHT_LOG_UART_STATE_STOP
+#define FLIGHT_LOG_UART_STATE_STOP   ((uint8_t)TELEM_STATE_FREE_FALL)    /* 3 */
+#endif
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -76,6 +83,8 @@ static control_t g_control;
 static stub_telemetry_frame_t g_telem;
 static stub_telemetry_frame_t g_telem_work;
 static volatile uint8_t g_telem_ready;
+static uint8_t g_log_active;
+static uint8_t g_log_done;
 #if TELEM_SOURCE_PLAYBACK
 typedef enum {
     PLAYBACK_CSV = 0,
@@ -101,6 +110,27 @@ static void MPU_Config(void);
 /* USER CODE BEGIN 0 */
 extern TIM_HandleTypeDef htim2;
 _Static_assert(sizeof(stub_telemetry_frame_t) == 21u, "Telemetry frame must be 21 bytes");
+
+/** Append only while START <= state < STOP; latch stop permanently. */
+static void FlightLog_MaybeAppend(
+    const stub_telemetry_frame_t *frame,
+    const flight_state_t *st,
+    const control_output_t *cmd)
+{
+    if (!g_log_done) {
+        if (frame->state >= FLIGHT_LOG_UART_STATE_STOP) {
+            if (g_log_active) {
+                g_log_done = 1U;
+            }
+        } else if (frame->state >= FLIGHT_LOG_UART_STATE_START) {
+            g_log_active = 1U;
+            (void)flight_log_append(frame, st, cmd);
+            if (flight_log_is_full()) {
+                BSP_LED_On(LED_RED);
+            }
+        }
+    }
+}
 
 /*
  * Servo mapping (sync with core/physics_utils.py):
@@ -235,10 +265,7 @@ static void Telemetry_PlaybackFeed(void)
         PlantState_ToTelem(&st, &g_telem_work);
         cmd.servo_angle_deg = Servo_SetAngleDeg(
             cmd.active ? cmd.servo_angle_deg : SERVO_ANGLE_SAFE_DEG);
-        (void)flight_log_append(&g_telem_work, &st, &cmd);
-        if (flight_log_is_full()) {
-            BSP_LED_On(LED_RED);
-        }
+        FlightLog_MaybeAppend(&g_telem_work, &st, &cmd);
         return;
     }
 #else
@@ -295,7 +322,7 @@ int main(void)
   control_init(&g_control);
   /* Model params: model_params_default() in physics.c (mass 12.57 kg, Cd 0.42,
    * BODY_CROSS_SECTION_M2). Override here only for experiments. */
-  g_control.pd.params.target_apogee = 2200.0f;
+  g_control.pd.params.target_apogee = 1400.0f;
   g_control.pd.params.kp = 0.08f;
   g_control.pd.params.kd = 0.0005f;
   g_control.pd.params.error_deadband = 10.0f;
@@ -314,6 +341,8 @@ int main(void)
   g_playback_finished = 0U;
   g_playback_phase = PLAYBACK_CSV;
   g_burnout_idx = telem_playback_burnout_index();
+  g_log_active = 0U;
+  g_log_done = 0U;
 #if TELEM_PLAYBACK_CLOSED_LOOP
   if (g_burnout_idx >= TELEM_PLAYBACK_FRAME_COUNT) {
     Error_Handler();
@@ -323,6 +352,8 @@ int main(void)
   if (flight_log_boot() != 0) {
     Error_Handler();
   }
+  g_log_active = 0U;
+  g_log_done = 0U;
   Telemetry_StartRx(&g_telem);
 #endif
   /* USER CODE END 2 */
@@ -378,10 +409,7 @@ int main(void)
         cmd.servo_angle_deg = Servo_SetAngleDeg(
             cmd.active ? cmd.servo_angle_deg : SERVO_ANGLE_SAFE_DEG);
 
-        (void)flight_log_append(&g_telem_work, &st, &cmd);
-        if (flight_log_is_full()) {
-            BSP_LED_On(LED_RED);
-        }
+        FlightLog_MaybeAppend(&g_telem_work, &st, &cmd);
 
 #if TELEM_SOURCE_PLAYBACK && TELEM_PLAYBACK_CLOSED_LOOP
         if (g_playback_phase == PLAYBACK_CSV && g_control.armed) {
