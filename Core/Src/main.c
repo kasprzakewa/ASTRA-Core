@@ -40,11 +40,11 @@
 #ifndef TELEM_PLAYBACK_CLOSED_LOOP
 #define TELEM_PLAYBACK_CLOSED_LOOP  1
 #endif
-/* 6 discrete output levels in Servo_SetAngleDeg (0 = off); bench softening only */
+/* Discrete PWM levels: 1 = continuous (off); >1 = N steps on [0°, 60°] */
 #ifndef SERVO_DISCRETE_LEVELS
-#define SERVO_DISCRETE_LEVELS  6U
+#define SERVO_DISCRETE_LEVELS  1U
 #endif
-/* 1 = boot sweep 90 -> 78 -> ... -> 30 -> 90 deg before main loop */
+/* 1 = boot sweep before main loop */
 #ifndef SERVO_BOOT_SWEEP
 #define SERVO_BOOT_SWEEP  0
 #endif
@@ -54,10 +54,10 @@
 #endif
 /* Flash log window by fc_state (UART + playback). */
 #ifndef FLIGHT_LOG_UART_STATE_START
-#define FLIGHT_LOG_UART_STATE_START  ((uint8_t)TELEM_STATE_FREE_FLIGHT)  /* 2 */
+#define FLIGHT_LOG_UART_STATE_START  ((uint8_t)TELEM_STATE_ACCELERATING)  /* 2 */
 #endif
 #ifndef FLIGHT_LOG_UART_STATE_STOP
-#define FLIGHT_LOG_UART_STATE_STOP   ((uint8_t)TELEM_STATE_FREE_FALL)    /* 3 */
+#define FLIGHT_LOG_UART_STATE_STOP   ((uint8_t)TELEM_STATE_LANDED)    /* 3 */
 #endif
 /* USER CODE END Includes */
 
@@ -152,12 +152,10 @@ static void FlightLog_MaybeAppend(
 #define SERVO_TIM_CHANNEL  TIM_CHANNEL_3
 #endif
 
-/** Round to nearest of SERVO_DISCRETE_LEVELS steps on [OPEN, SAFE]. */
+/** Round to nearest of SERVO_DISCRETE_LEVELS steps on [SAFE, OPEN]. */
+#if SERVO_DISCRETE_LEVELS > 1U
 static float Servo_DiscretizeAngleDeg(float angle_deg)
 {
-#if SERVO_DISCRETE_LEVELS <= 1U
-    return angle_deg;
-#else
     const float span = SERVO_ANGLE_OPEN_DEG - SERVO_ANGLE_SAFE_DEG;
     const float step = span / (float)(SERVO_DISCRETE_LEVELS - 1U);
     uint32_t idx = (uint32_t)((angle_deg - SERVO_ANGLE_SAFE_DEG) / step + 0.5f);
@@ -166,8 +164,8 @@ static float Servo_DiscretizeAngleDeg(float angle_deg)
         idx = SERVO_DISCRETE_LEVELS - 1U;
     }
     return SERVO_ANGLE_SAFE_DEG + (float)idx * step;
-#endif
 }
+#endif
 
 static float Servo_SetAngleDeg(float angle_deg)
 {
