@@ -68,7 +68,8 @@ uint8_t coast_sil_step(
     st.velocity_z = sil->vz;
     st.velocity_lateral = fabsf_local(sil->v_h);
 
-    control_arm(ctl);
+    /* Same TELEM_ARM_COAST_FRAMES gate as UART before arm + dynamic target lock. */
+    control_update_coast_gate(ctl, sil->vz, 1u);
     cmd = control_step(ctl, &st);
     sil->u = cmd.control_u;
 

@@ -74,11 +74,9 @@ float calculate_drag_coefficient(float speed, float altitude, const model_params
 
 float calculate_brake_area(float servo_angle_deg)
 {
-    /* Brake area polynomial [mm^2], theta in degrees — same coeffs as Python. */
-    float brake_mm2 =
-        0.1512f * servo_angle_deg * servo_angle_deg
-        - 124.74f * servo_angle_deg
-        + 9996.8f;
+    /* p(α) = π*((63 + α/4)² - 3969) mm²; α=0 hidden, α=60 fully open — sync Python. */
+    float radius_mm = 63.0f + servo_angle_deg * 0.25f;
+    float brake_mm2 = (radius_mm * radius_mm - 3969.0f) * 3.14159265f;
     if (brake_mm2 < 0.0f) {
         brake_mm2 = 0.0f;
     }

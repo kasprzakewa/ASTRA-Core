@@ -11,12 +11,12 @@
 extern "C" {
 #endif
 
-#define SERVO_ANGLE_SAFE_DEG  (90.0f)
-#define SERVO_ANGLE_OPEN_DEG  (30.0f)
+#define SERVO_ANGLE_SAFE_DEG  (0.0f)
+#define SERVO_ANGLE_OPEN_DEG  (60.0f)
 
 #define BODY_DIAMETER_M              0.126f
 #define BODY_CROSS_SECTION_M2        0.012468828f  /* pi * (BODY_DIAMETER_M / 2)^2 */
-#define DEFAULT_BODY_MASS_KG         12.57f
+#define DEFAULT_BODY_MASS_KG         10.453f
 #define DEFAULT_BODY_DRAG_COEFFICIENT 0.42f
 #define DEFAULT_BRAKE_DRAG_COEFFICIENT 1.2f
 

@@ -1,5 +1,6 @@
 ../Core/Inc/physics.h:23:21:servo_angle_safe_deg	4	static
 ../Core/Src/control.c:7:6:control_init	16	static
-../Core/Src/control.c:14:6:control_arm	16	static
-../Core/Src/control.c:19:6:control_disarm	16	static
-../Core/Src/control.c:25:18:control_step	80	static
+../Core/Src/control.c:16:6:control_arm	16	static
+../Core/Src/control.c:21:6:control_disarm	16	static
+../Core/Src/control.c:29:6:control_update_coast_gate	24	static
+../Core/Src/control.c:52:18:control_step	80	static

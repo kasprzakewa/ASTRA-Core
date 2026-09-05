@@ -46,7 +46,7 @@
 #endif
 /* 1 = boot sweep 90 -> 78 -> ... -> 30 -> 90 deg before main loop */
 #ifndef SERVO_BOOT_SWEEP
-#define SERVO_BOOT_SWEEP  1
+#define SERVO_BOOT_SWEEP  0
 #endif
 /* USER CODE END Includes */
 
@@ -78,7 +78,7 @@ static stub_telemetry_frame_t g_telem_work;
 static volatile uint8_t g_telem_ready;
 #if TELEM_SOURCE_PLAYBACK
 typedef enum {
-    PLAYBACK_BOOST = 0,
+    PLAYBACK_CSV = 0,
     PLAYBACK_COAST,
     PLAYBACK_DONE
 } playback_phase_t;
@@ -104,15 +104,15 @@ _Static_assert(sizeof(stub_telemetry_frame_t) == 21u, "Telemetry frame must be 2
 
 /*
  * Servo mapping (sync with core/physics_utils.py):
- *   u=0 -> 90 deg (brakes closed, safe)
- *   u=1 -> 30 deg (max brake)
- * PWM: SERVO_PWM_MIN @ 30 deg, SERVO_PWM_MAX @ 90 deg.
+ *   u=0 -> 0 deg (brakes retracted, safe)
+ *   u=1 -> 60 deg (max brake)
+ * PWM: SERVO_PWM_MIN @ 60 deg, SERVO_PWM_MAX @ 0 deg.
  */
 #ifndef SERVO_PWM_MIN
-#define SERVO_PWM_MIN  (1000u)
+#define SERVO_PWM_MIN  (960u)
 #endif
 #ifndef SERVO_PWM_MAX
-#define SERVO_PWM_MAX  (2000u)
+#define SERVO_PWM_MAX  (1600u)
 #endif
 #ifndef SERVO_TIM_CHANNEL
 #define SERVO_TIM_CHANNEL  TIM_CHANNEL_3
@@ -124,14 +124,14 @@ static float Servo_DiscretizeAngleDeg(float angle_deg)
 #if SERVO_DISCRETE_LEVELS <= 1U
     return angle_deg;
 #else
-    const float span = SERVO_ANGLE_SAFE_DEG - SERVO_ANGLE_OPEN_DEG;
+    const float span = SERVO_ANGLE_OPEN_DEG - SERVO_ANGLE_SAFE_DEG;
     const float step = span / (float)(SERVO_DISCRETE_LEVELS - 1U);
-    uint32_t idx = (uint32_t)((angle_deg - SERVO_ANGLE_OPEN_DEG) / step + 0.5f);
+    uint32_t idx = (uint32_t)((angle_deg - SERVO_ANGLE_SAFE_DEG) / step + 0.5f);
 
     if (idx >= SERVO_DISCRETE_LEVELS) {
         idx = SERVO_DISCRETE_LEVELS - 1U;
     }
-    return SERVO_ANGLE_OPEN_DEG + (float)idx * step;
+    return SERVO_ANGLE_SAFE_DEG + (float)idx * step;
 #endif
 }
 
@@ -140,17 +140,18 @@ static float Servo_SetAngleDeg(float angle_deg)
     if (angle_deg != angle_deg) { /* NaN */
         angle_deg = SERVO_ANGLE_SAFE_DEG;
     }
-    angle_deg = clamp_f(angle_deg, SERVO_ANGLE_OPEN_DEG, SERVO_ANGLE_SAFE_DEG);
+    /* SAFE=0 … OPEN=60 */
+    angle_deg = clamp_f(angle_deg, SERVO_ANGLE_SAFE_DEG, SERVO_ANGLE_OPEN_DEG);
 #if SERVO_DISCRETE_LEVELS > 1U
     angle_deg = Servo_DiscretizeAngleDeg(angle_deg);
 #endif
 
-    const float span = SERVO_ANGLE_SAFE_DEG - SERVO_ANGLE_OPEN_DEG;
-    const float frac = (angle_deg - SERVO_ANGLE_OPEN_DEG) / span;
-    uint32_t pulse = (uint32_t)clamp_f(
-        (float)SERVO_PWM_MIN + frac * (float)(SERVO_PWM_MAX - SERVO_PWM_MIN),
-        (float)SERVO_PWM_MIN,
-        (float)SERVO_PWM_MAX);
+    /* 0° → PWM_MAX, 60° → PWM_MIN */
+    const float span = SERVO_ANGLE_OPEN_DEG - SERVO_ANGLE_SAFE_DEG;
+    const float open_frac = (angle_deg - SERVO_ANGLE_SAFE_DEG) / span;
+    uint32_t pulse = (uint32_t)(
+        (float)SERVO_PWM_MAX
+        - open_frac * (float)(SERVO_PWM_MAX - SERVO_PWM_MIN));
     __HAL_TIM_SET_COMPARE(&htim2, SERVO_TIM_CHANNEL, pulse);
     return angle_deg;
 }
@@ -215,10 +216,7 @@ static void Telemetry_PlaybackFeed(void)
     }
 
 #if TELEM_PLAYBACK_CLOSED_LOOP
-    if (g_playback_phase == PLAYBACK_BOOST) {
-        if (telem_playback_index() > g_burnout_idx) {
-            return;
-        }
+    if (g_playback_phase == PLAYBACK_CSV) {
         if (telem_playback_next(&g_telem) == 0U) {
             Playback_Finish();
             return;
@@ -314,7 +312,7 @@ int main(void)
   }
   telem_playback_reset();
   g_playback_finished = 0U;
-  g_playback_phase = PLAYBACK_BOOST;
+  g_playback_phase = PLAYBACK_CSV;
   g_burnout_idx = telem_playback_burnout_index();
 #if TELEM_PLAYBACK_CLOSED_LOOP
   if (g_burnout_idx >= TELEM_PLAYBACK_FRAME_COUNT) {
@@ -336,24 +334,25 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 #if SERVO_BOOT_SWEEP
   Servo_SetAngleDeg(SERVO_ANGLE_SAFE_DEG);
-  BSP_LED_Toggle(LED_YELLOW);
+  BSP_LED_Toggle(LED_GREEN);
   HAL_Delay(1000);
-  Servo_SetAngleDeg(78.0f);
-  BSP_LED_Toggle(LED_YELLOW);
+//  Servo_SetAngleDeg(12.0f);
+//  BSP_LED_Toggle(LED_GREEN);
+//  HAL_Delay(1000);
+//  Servo_SetAngleDeg(24.0f);
+//  BSP_LED_Toggle(LED_GREEN);
+//  HAL_Delay(1000);
+  Servo_SetAngleDeg(36.0f);
+  BSP_LED_Toggle(LED_GREEN);
   HAL_Delay(1000);
-  Servo_SetAngleDeg(66.0f);
-  BSP_LED_Toggle(LED_YELLOW);
-  HAL_Delay(1000);
-  Servo_SetAngleDeg(54.0f);
-  BSP_LED_Toggle(LED_YELLOW);
-  HAL_Delay(1000);
-  Servo_SetAngleDeg(42.0f);
-  BSP_LED_Toggle(LED_YELLOW);
-  HAL_Delay(1000);
-  Servo_SetAngleDeg(SERVO_ANGLE_OPEN_DEG);
-  BSP_LED_Toggle(LED_YELLOW);
-  HAL_Delay(1000);
+//  Servo_SetAngleDeg(48.0f);
+//  BSP_LED_Toggle(LED_GREEN);
+//  HAL_Delay(1000);
+//  Servo_SetAngleDeg(SERVO_ANGLE_OPEN_DEG);
+//  BSP_LED_Toggle(LED_GREEN);
+//  HAL_Delay(1000);
   Servo_SetAngleDeg(SERVO_ANGLE_SAFE_DEG);
+  BSP_LED_Off(LED_GREEN);
 #else
   Servo_SetAngleDeg(SERVO_ANGLE_SAFE_DEG);
 #endif
@@ -385,10 +384,8 @@ int main(void)
         }
 
 #if TELEM_SOURCE_PLAYBACK && TELEM_PLAYBACK_CLOSED_LOOP
-        if (g_playback_phase == PLAYBACK_BOOST &&
-            telem_playback_index() == (g_burnout_idx + 1U)) {
+        if (g_playback_phase == PLAYBACK_CSV && g_control.armed) {
             coast_sil_init(&g_coast_sil, &st, cmd.control_u, COAST_SIL_MAX_STEPS_DEFAULT);
-            control_arm(&g_control);
             g_playback_phase = PLAYBACK_COAST;
         }
 #endif

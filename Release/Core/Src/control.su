@@ -1,4 +1,5 @@
 ../Core/Src/control.c:7:6:control_init	8	static
-../Core/Src/control.c:14:6:control_arm	0	static
-../Core/Src/control.c:19:6:control_disarm	0	static
-../Core/Src/control.c:25:18:control_step	48	static
+../Core/Src/control.c:16:6:control_arm	0	static
+../Core/Src/control.c:21:6:control_disarm	0	static
+../Core/Src/control.c:29:6:control_update_coast_gate	0	static
+../Core/Src/control.c:52:18:control_step	48	static

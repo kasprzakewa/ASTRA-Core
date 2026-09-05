@@ -8,8 +8,6 @@
 
 _Static_assert(sizeof(stub_telemetry_frame_t) == 21u, "telemetry frame size mismatch");
 
-static uint8_t s_coast_streak;
-
 void telemetry_to_flight_state(
     const stub_telemetry_frame_t *frame,
     flight_state_t *state)
@@ -33,22 +31,10 @@ control_output_t telemetry_run_control(
     flight_state_t st;
     telemetry_to_flight_state(frame, &st);
 
-    if (telemetry_is_free_flight(frame) &&
-		st.velocity_z > 0.0f &&
-		st.velocity_z <= MAX_BRAKE_DEPLOY_SPEED_MS)
-    {
-        if (s_coast_streak < 255u) {
-            s_coast_streak++;
-        }
-        if (s_coast_streak >= (uint8_t)TELEM_ARM_COAST_FRAMES) {
-            control_arm(ctl);
-        } else {
-            control_disarm(ctl);
-        }
-    } else {
-        s_coast_streak = 0U;
-        control_disarm(ctl);
-    }
+    control_update_coast_gate(
+        ctl,
+        st.velocity_z,
+        telemetry_is_free_flight(frame));
 
     control_output_t out = control_step(ctl, &st);
     if (state_out != NULL) {
